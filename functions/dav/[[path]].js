@@ -287,15 +287,18 @@ function generateDirectoryListingHtml(basePath, contents) {
 
 function generateWebDAVXml(basePath, contents) {
     let responses = '';
-    const currentPath = basePath.endsWith('/') ? basePath : `${basePath}/`;
+    // 确保 basePath 包含 /dav 前缀
+    let davPath = basePath.startsWith('/dav') ? basePath : `/dav${basePath}`;
+    const currentPath = davPath.endsWith('/') ? davPath : `${davPath}/`;
 
     responses += createCollectionXml(currentPath);
 
     for (const dir of contents.directories) {
-        responses += createCollectionXml(`/${dir}/`);
+        responses += createCollectionXml(`${currentPath}${dir}/`);
     }
     for (const file of contents.files) {
-        responses += createFileXml(file);
+        // 传递 basePath 参数
+        responses += createFileXml(file, currentPath);
     }
     return `<?xml version="1.0" encoding="utf-8"?><D:multistatus xmlns:D="DAV:">${responses}</D:multistatus>`;
 }
@@ -307,8 +310,10 @@ function createCollectionXml(path) {
     return `<D:response><D:href>${encodeURI(path)}</D:href><D:propstat><D:prop><D:displayname>${name}</D:displayname><D:resourcetype><D:collection/></D:resourcetype><D:creationdate>${now}</D:creationdate><D:getlastmodified>${now}</D:getlastmodified></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>`;
 }
 
-function createFileXml(file) {
+function createFileXml(file, basePath = '') {
     const now = new Date().toUTCString();
     const fileSize = file.metadata && file.metadata['File-Size'] ? file.metadata['File-Size'] : "0";
-    return `<D:response><D:href>${encodeURI(`/${file.name}`)}</D:href><D:propstat><D:prop><D:displayname>${file.name.split('/').pop()}</D:displayname><D:resourcetype/><D:creationdate>${now}</D:creationdate><D:getlastmodified>${now}</D:getlastmodified><D:getcontentlength>${fileSize}</D:getcontentlength></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>`;
+    // 包含完整的 dav 路径前缀
+    const fullPath = basePath ? `${basePath}${file.name}` : `/dav/${file.name}`;
+    return `<D:response><D:href>${encodeURI(fullPath)}</D:href><D:propstat><D:prop><D:displayname>${file.name.split('/').pop()}</D:displayname><D:resourcetype/><D:creationdate>${now}</D:creationdate><D:getlastmodified>${now}</D:getlastmodified><D:getcontentlength>${fileSize}</D:getcontentlength></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>`;
 }
