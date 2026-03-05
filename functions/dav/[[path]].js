@@ -9,7 +9,7 @@ export async function onRequest(context) {
 
     // 从请求路径中替换第一个 /dav 部分
     const url = new URL(request.url);
-    url.pathname = url.pathname.replace(/^\/dav/, '') || '/';
+    url.pathname = url.pathname.replace(/^\/dav(\/|$)/, '/');
     const modifiedRequest = new Request(url.toString(), request);
 
     switch (modifiedRequest.method) {
@@ -285,24 +285,27 @@ function generateDirectoryListingHtml(basePath, contents) {
     return `<!DOCTYPE html><html><head><title>Index of ${basePath}</title><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>body{font-family:sans-serif;padding:20px}li{margin:5px 0}</style></head><body><h1>Index of ${basePath}</h1><ul>${parentDirLink}${dirLinks}${fileLinks}</ul></body></html>`;
 }
 
+function toDavHref(p) {
+  // p: "sec/a.txt" 或 "/sec/a.txt"
+  p = String(p || '').replace(/^\/+/, '');         // 去掉开头 /
+  return `/dav/${p}`.replace(/\/{2,}/g, '/');      // 合并重复 /
+}
+
 function generateWebDAVXml(basePath, contents) {
-    let responses = '';
-    
-    // 确保 basePath 包含 /dav 前缀
-    let davPath = basePath.startsWith('/dav') ? basePath : `/dav${basePath}`;
-    const currentPath = davPath.endsWith('/') ? davPath : `${davPath}/`;
-
-    responses += createCollectionXml(currentPath);
-
-    for (const dir of contents.directories) {
-        // 完整路径：当前目录 + 子目录名
-        responses += createCollectionXml(`${currentPath}${dir}/`);
-    }
-    for (const file of contents.files) {
-        // 传入当前路径作为基础路径
-        responses += createFileXml(file, currentPath);
-    }
-    return `<?xml version="1.0" encoding="utf-8"?><D:multistatus xmlns:D="DAV:">${responses}</D:multistatus>`;
+  let responses = '';
+  // basePath 是 modifiedRequest 的路径（不含 /dav），所以当前目录 href 仍要补 /dav
+  const davBase = basePath.startsWith('/dav') ? basePath : `/dav${basePath}`;
+  const currentPath = davBase.endsWith('/') ? davBase : `${davBase}/`;
+  responses += createCollectionXml(currentPath);
+  // directories: 如果 API 返回的是 "sec/sub"，就应该直接变成 "/dav/sec/sub/"
+  for (const dir of contents.directories) {
+    responses += createCollectionXml(`${toDavHref(dir)}/`);
+  }
+  // files: "/dav/" + file.name
+  for (const file of contents.files) {
+    responses += createFileXml(file, toDavHref(file.name));
+  }
+  return `<?xml version="1.0" encoding="utf-8"?><D:multistatus xmlns:D="DAV:">${responses}</D:multistatus>`;
 }
 
 function createCollectionXml(path) {
@@ -312,17 +315,10 @@ function createCollectionXml(path) {
     return `<D:response><D:href>${encodeURI(path)}</D:href><D:propstat><D:prop><D:displayname>${name}</D:displayname><D:resourcetype><D:collection/></D:resourcetype><D:creationdate>${now}</D:creationdate><D:getlastmodified>${now}</D:getlastmodified></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>`;
 }
 
-function createFileXml(file, basePath = '') {
-    const now = new Date().toUTCString();
-    const fileSize = file.metadata && file.metadata['File-Size'] ? file.metadata['File-Size'] : "0";
-    
-    // 确保完整的 /dav 路径
-    let fullPath;
-    if (basePath) {
-        fullPath = `${basePath}${file.name}`;
-    } else {
-        fullPath = file.name.startsWith('/dav') ? file.name : `/dav/${file.name}`;
-    }
-    
-    return `<D:response><D:href>${encodeURI(fullPath)}</D:href><D:propstat><D:prop><D:displayname>${file.name.split('/').pop()}</D:displayname><D:resourcetype/><D:creationdate>${now}</D:creationdate><D:getlastmodified>${now}</D:getlastmodified><D:getcontentlength>${fileSize}</D:getcontentlength></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>`;
+// 让 createFileXml 接收“完整 href”
+function createFileXml(file, fullPath) {
+  const now = new Date().toUTCString();
+  const fileSize =
+    (file.metadata && (file.metadata['File-Size'] ?? file.metadata['FileSize'] ?? file.metadata['FileSizeBytes'])) ?? "0";
+  return `<D:response><D:href>${encodeURI(fullPath)}</D:href><D:propstat><D:prop><D:displayname>${file.name.split('/').pop()}</D:displayname><D:resourcetype/><D:creationdate>${now}</D:creationdate><D:getlastmodified>${now}</D:getlastmodified><D:getcontentlength>${fileSize}</D:getcontentlength></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>`;
 }
