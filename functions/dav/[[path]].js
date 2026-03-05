@@ -287,45 +287,22 @@ function generateDirectoryListingHtml(basePath, contents) {
 
 function generateWebDAVXml(basePath, contents) {
     let responses = '';
-    // 确保 basePath 包含 /dav 前缀
-    let davPath = basePath.startsWith('/dav') ? basePath : `/dav${basePath}`;
-    const currentPath = davPath.endsWith('/') ? davPath : `${davPath}/`;
+    const currentPath = basePath.endsWith('/') ? basePath : `${basePath}/`;
 
-    // 当前目录本身
     responses += createCollectionXml(currentPath);
 
-    // 子目录
     for (const dir of contents.directories) {
-        // dir 是目录名，比如 "data"
-        // 不要追加到 currentPath，因为 dir 本身就相对于当前路径
-        const dirPath = `${currentPath}${dir}/`;
-        responses += createCollectionXml(dirPath);
+        // 由于 API 返回的 dir 已经是完整路径（如 "sec"）
+        // 需要根据 basePath 来判断是否需要拼接
+        const fullDirPath = dir.startsWith('/') ? dir : `/${dir}`;
+        responses += createCollectionXml(`${fullDirPath}/`);
     }
-
     for (const file of contents.files) {
-        // file.name 可能包含相对路径，比如 "data/info.txt"
-        // 需要和 basePath 正确组合，而不是 currentPath
-        const filePath = buildFilePath(basePath, file.name);
-        responses += createFileXml(file, filePath);
+        // 同样，file.name 已经是完整路径（如 "sec/filename.txt"）
+        const fullFilePath = file.name.startsWith('/') ? file.name : `/${file.name}`;
+        responses += createFileXml(file, fullFilePath);
     }
-
     return `<?xml version="1.0" encoding="utf-8"?><D:multistatus xmlns:D="DAV:">${responses}</D:multistatus>`;
-}
-// 构建文件路径
-function buildFilePath(basePath, fileName) {
-    // basePath 可能是 /data (不含 /dav)
-    // fileName 可能是 data/info.txt
-    
-    let base = basePath.startsWith('/dav') ? basePath : `/dav${basePath}`;
-    
-    // 移除末尾的 /
-    base = base.endsWith('/') ? base.slice(0, -1) : base;
-    
-    // 确保 fileName 不以 / 开头
-    fileName = fileName.startsWith('/') ? fileName.slice(1) : fileName;
-    
-    // 正确拼接
-    return `${base}/${fileName}`;
 }
 
 function createCollectionXml(path) {
@@ -338,6 +315,6 @@ function createCollectionXml(path) {
 function createFileXml(file, fullPath) {
     const now = new Date().toUTCString();
     const fileSize = file.metadata && file.metadata['File-Size'] ? file.metadata['File-Size'] : "0";
-    
+    // 直接使用已经完整的路径
     return `<D:response><D:href>${encodeURI(fullPath)}</D:href><D:propstat><D:prop><D:displayname>${file.name.split('/').pop()}</D:displayname><D:resourcetype/><D:creationdate>${now}</D:creationdate><D:getlastmodified>${now}</D:getlastmodified><D:getcontentlength>${fileSize}</D:getcontentlength></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>`;
 }
