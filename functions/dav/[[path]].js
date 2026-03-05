@@ -316,9 +316,12 @@ function createCollectionXml(path) {
 }
 
 // 让 createFileXml 接收“完整 href”
-function createFileXml(file, fullPath) {
+function createFileXml(file, basePath = '') {
   const now = new Date().toUTCString();
-  const fileSize =
-    (file.metadata && (file.metadata['File-Size'] ?? file.metadata['FileSize'] ?? file.metadata['FileSizeBytes'])) ?? "0";
-  return `<D:response><D:href>${encodeURI(fullPath)}</D:href><D:propstat><D:prop><D:displayname>${file.name.split('/').pop()}</D:displayname><D:resourcetype/><D:creationdate>${now}</D:creationdate><D:getlastmodified>${now}</D:getlastmodified><D:getcontentlength>${fileSize}</D:getcontentlength></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>`;
+  const raw = file?.metadata?.FileSizeBytes ?? 0;
+  const bytes = Number.isFinite(raw) ? raw : (parseInt(String(raw), 10) || 0);
+  let fullPath;
+  if (basePath) fullPath = `${basePath}${file.name}`;
+  else fullPath = file.name.startsWith('/dav') ? file.name : `/dav/${file.name}`;
+  return `<D:response><D:href>${encodeURI(fullPath)}</D:href><D:propstat><D:prop><D:displayname>${file.name.split('/').pop()}</D:displayname><D:resourcetype/><D:creationdate>${now}</D:creationdate><D:getlastmodified>${now}</D:getlastmodified><D:getcontentlength>${bytes}</D:getcontentlength></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>`;
 }
